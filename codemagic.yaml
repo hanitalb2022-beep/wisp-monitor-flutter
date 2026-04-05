@@ -13,10 +13,7 @@ workflows:
 
       - name: Set Android permissions and config
         script: |
-          # Use Python to safely modify AndroidManifest.xml (works on macOS & Linux)
           python3 << 'EOF'
-          import re
-
           manifest_path = "android/app/src/main/AndroidManifest.xml"
 
           with open(manifest_path, "r") as f:
@@ -31,7 +28,6 @@ workflows:
               <uses-permission android:name="android.permission.WAKE_LOCK"/>
           """
 
-          # Insert permissions before <application
           content = content.replace("<application", permissions + "\n    <application", 1)
 
           with open(manifest_path, "w") as f:
@@ -40,35 +36,111 @@ workflows:
           print("AndroidManifest.xml updated successfully")
           EOF
 
-      - name: Set minimum SDK version
+      - name: Configure Gradle - minSdk and desugaring
         script: |
-          # Use Python to update minSdk in build.gradle or build.gradle.kts
           python3 << 'EOF'
           import os, re
 
-          # Try build.gradle.kts first, then build.gradle
-          for gradle_file in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
-              if os.path.exists(gradle_file):
-                  with open(gradle_file, "r") as f:
-                      content = f.read()
-
-                  # Replace minSdk variations
-                  content = re.sub(
-                      r'minSdk\s*=\s*flutter\.minSdkVersion',
-                      'minSdk = 21',
-                      content
-                  )
-                  content = re.sub(
-                      r'minSdkVersion\s+flutter\.minSdkVersion',
-                      'minSdkVersion 21',
-                      content
-                  )
-
-                  with open(gradle_file, "w") as f:
-                      f.write(content)
-
-                  print(f"Updated {gradle_file} - minSdk set to 21")
+          # Find the correct gradle file
+          gradle_file = None
+          for gf in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
+              if os.path.exists(gf):
+                  gradle_file = gf
                   break
+
+          if not gradle_file:
+              print("ERROR: No build.gradle found!")
+              exit(1)
+
+          with open(gradle_file, "r") as f:
+              content = f.read()
+
+          is_kts = gradle_file.endswith(".kts")
+          print(f"Found: {gradle_file} (KTS: {is_kts})")
+
+          # 1. Set minSdk to 21
+          content = re.sub(
+              r'minSdk\s*=\s*flutter\.minSdkVersion',
+              'minSdk = 21',
+              content
+          )
+          content = re.sub(
+              r'minSdkVersion\s+flutter\.minSdkVersion',
+              'minSdkVersion 21',
+              content
+          )
+
+          # 2. Enable core library desugaring
+          if is_kts:
+              # For build.gradle.kts
+              # Add isCoreLibraryDesugaringEnabled in compileOptions
+              if "isCoreLibraryDesugaringEnabled" not in content:
+                  # Add compileOptions block if not exists
+                  if "compileOptions" in content:
+                      content = re.sub(
+                          r'(compileOptions\s*\{)',
+                          r'\1\n        isCoreLibraryDesugaringEnabled = true',
+                          content
+                      )
+                  else:
+                      # Add before the closing of android block
+                      content = re.sub(
+                          r'(defaultConfig\s*\{[^}]*\})',
+                          r'''\1
+
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }''',
+                          content
+                      )
+
+              # Add desugaring dependency
+              if "desugar_jdk_libs" not in content:
+                  content = re.sub(
+                      r'(dependencies\s*\{)',
+                      r'\1\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")',
+                      content
+                  )
+          else:
+              # For build.gradle (Groovy)
+              if "coreLibraryDesugaringEnabled" not in content:
+                  if "compileOptions" in content:
+                      content = re.sub(
+                          r'(compileOptions\s*\{)',
+                          r'\1\n        coreLibraryDesugaringEnabled true',
+                          content
+                      )
+                  else:
+                      content = re.sub(
+                          r'(defaultConfig\s*\{[^}]*\})',
+                          r'''\1
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }''',
+                          content
+                      )
+
+              if "desugar_jdk_libs" not in content:
+                  content = re.sub(
+                      r'(dependencies\s*\{)',
+                      r'\1\n    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"',
+                      content
+                  )
+
+          with open(gradle_file, "w") as f:
+              f.write(content)
+
+          print(f"Updated {gradle_file} - minSdk=21, desugaring enabled")
+
+          # Print the file for debugging
+          with open(gradle_file, "r") as f:
+              print("=== Final gradle file ===")
+              print(f.read())
           EOF
 
       - name: Get Flutter packages
