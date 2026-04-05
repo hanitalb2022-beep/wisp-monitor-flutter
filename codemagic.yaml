@@ -1,0 +1,58 @@
+workflows:
+  android-workflow:
+    name: WISP Monitor Android Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Generate Android project files
+        script: |
+          flutter create --platforms=android .
+          
+      - name: Set Android permissions
+        script: |
+          # Update AndroidManifest.xml with required permissions
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          
+          # Add permissions before <application tag
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST_FILE"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST_FILE"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST_FILE"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>' "$MANIFEST_FILE"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' "$MANIFEST_FILE"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.WAKE_LOCK"/>' "$MANIFEST_FILE"
+          
+      - name: Set minimum SDK version
+        script: |
+          # Update build.gradle to set minSdk to 21
+          BUILD_GRADLE="android/app/build.gradle"
+          if [ -f "$BUILD_GRADLE" ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' "$BUILD_GRADLE"
+            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' "$BUILD_GRADLE"
+          fi
+          
+          BUILD_GRADLE_KTS="android/app/build.gradle.kts"
+          if [ -f "$BUILD_GRADLE_KTS" ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' "$BUILD_GRADLE_KTS"
+          fi
+          
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+          
+      - name: Build APK
+        script: |
+          flutter build apk --release
+          
+    artifacts:
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/mapping.txt
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
