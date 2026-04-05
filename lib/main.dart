@@ -922,7 +922,7 @@ class WispMonitorApp extends StatelessWidget {
           elevation: 0,
           centerTitle: true,
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: AppConstants.bgCard,
           elevation: 4,
           shape:
@@ -965,7 +965,7 @@ class WispMonitorApp extends StatelessWidget {
             foregroundColor: AppConstants.accentCyan,
           ),
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           backgroundColor: AppConstants.bgSecondary,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
