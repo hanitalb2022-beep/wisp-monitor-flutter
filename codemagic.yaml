@@ -10,42 +10,75 @@ workflows:
       - name: Generate Android project files
         script: |
           flutter create --platforms=android .
-          
-      - name: Set Android permissions
+
+      - name: Set Android permissions and config
         script: |
-          # Update AndroidManifest.xml with required permissions
-          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
-          
-          # Add permissions before <application tag
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST_FILE"
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST_FILE"
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST_FILE"
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>' "$MANIFEST_FILE"
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' "$MANIFEST_FILE"
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.WAKE_LOCK"/>' "$MANIFEST_FILE"
-          
+          # Use Python to safely modify AndroidManifest.xml (works on macOS & Linux)
+          python3 << 'EOF'
+          import re
+
+          manifest_path = "android/app/src/main/AndroidManifest.xml"
+
+          with open(manifest_path, "r") as f:
+              content = f.read()
+
+          permissions = """
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+          """
+
+          # Insert permissions before <application
+          content = content.replace("<application", permissions + "\n    <application", 1)
+
+          with open(manifest_path, "w") as f:
+              f.write(content)
+
+          print("AndroidManifest.xml updated successfully")
+          EOF
+
       - name: Set minimum SDK version
         script: |
-          # Update build.gradle to set minSdk to 21
-          BUILD_GRADLE="android/app/build.gradle"
-          if [ -f "$BUILD_GRADLE" ]; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' "$BUILD_GRADLE"
-            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' "$BUILD_GRADLE"
-          fi
-          
-          BUILD_GRADLE_KTS="android/app/build.gradle.kts"
-          if [ -f "$BUILD_GRADLE_KTS" ]; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' "$BUILD_GRADLE_KTS"
-          fi
-          
+          # Use Python to update minSdk in build.gradle or build.gradle.kts
+          python3 << 'EOF'
+          import os, re
+
+          # Try build.gradle.kts first, then build.gradle
+          for gradle_file in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
+              if os.path.exists(gradle_file):
+                  with open(gradle_file, "r") as f:
+                      content = f.read()
+
+                  # Replace minSdk variations
+                  content = re.sub(
+                      r'minSdk\s*=\s*flutter\.minSdkVersion',
+                      'minSdk = 21',
+                      content
+                  )
+                  content = re.sub(
+                      r'minSdkVersion\s+flutter\.minSdkVersion',
+                      'minSdkVersion 21',
+                      content
+                  )
+
+                  with open(gradle_file, "w") as f:
+                      f.write(content)
+
+                  print(f"Updated {gradle_file} - minSdk set to 21")
+                  break
+          EOF
+
       - name: Get Flutter packages
         script: |
           flutter pub get
-          
+
       - name: Build APK
         script: |
           flutter build apk --release
-          
+
     artifacts:
       - build/**/outputs/**/*.apk
       - build/**/outputs/**/mapping.txt
